@@ -4,12 +4,20 @@ from flask import Flask, render_template, request, redirect, url_for, flash, get
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///hardware.db')
+# Uzmi DATABASE_URL iz okruženja
+database_url = os.getenv('DATABASE_URL', 'sqlite:///hardware.db')
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 db = SQLAlchemy(app)
+
+# Kreiraj tabele prilikom inicijalizacije aplikacije
+with app.app_context():
+    db.create_all()
+
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
@@ -153,7 +161,5 @@ def cancel_reservation(reservation_id):
     return redirect(url_for('reservations'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
