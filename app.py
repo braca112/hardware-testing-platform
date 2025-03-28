@@ -5,7 +5,6 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
-# Uzmi DATABASE_URL iz okruženja
 database_url = os.getenv('DATABASE_URL', 'sqlite:///hardware.db')
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
@@ -16,10 +15,15 @@ db = SQLAlchemy(app)
 
 # Kreiraj tabele prilikom inicijalizacije aplikacije
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+        print("Database tables created successfully!")
+    except Exception as e:
+        print(f"Error creating database tables: {e}")
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
 
 # User model
 class User(UserMixin, db.Model):
