@@ -167,6 +167,40 @@ def cancel_reservation(reservation_id):
     flash('Reservation cancelled successfully!', 'success')
     return redirect(url_for('reservations'))
 
+@app.route('/edit-hardware/<int:hardware_id>', methods=['GET', 'POST'])
+@login_required
+def edit_hardware(hardware_id):
+    hardware = Hardware.query.get_or_404(hardware_id)
+    if hardware.owner_id != current_user.id:
+        flash('You can only edit your own hardware.', 'danger')
+        return redirect(url_for('home'))
+    if request.method == 'POST':
+        hardware.name = request.form['name']
+        hardware.price = float(request.form['price'])
+        if hardware.price <= 0:
+            flash('Price must be greater than 0.', 'danger')
+            return redirect(url_for('edit_hardware', hardware_id=hardware.id))
+        db.session.commit()
+        flash('Hardware updated successfully!', 'success')
+        return redirect(url_for('home'))
+    return render_template('edit_hardware.html', hardware=hardware)
+
+@app.route('/delete-hardware/<int:hardware_id>', methods=['POST'])
+@login_required
+def delete_hardware(hardware_id):
+    hardware = Hardware.query.get_or_404(hardware_id)
+    if hardware.owner_id != current_user.id:
+        flash('You can only delete your own hardware.', 'danger')
+        return redirect(url_for('home'))
+    active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).all()
+    if active_reservations:
+        flash('Cannot delete hardware with active reservations.', 'danger')
+        return redirect(url_for('home'))
+    db.session.delete(hardware)
+    db.session.commit()
+    flash('Hardware deleted successfully!', 'success')
+    return redirect(url_for('home'))
+
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
