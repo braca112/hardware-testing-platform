@@ -21,9 +21,9 @@ db = SQLAlchemy(app)
 with app.app_context():
     try:
         db.create_all()
-        print("Database tables created successfully!")
+        app.logger.info("Database tables created successfully!")
     except Exception as e:
-        print(f"Error creating database tables: {e}")
+        app.logger.error(f"Error creating database tables: {e}")
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -170,36 +170,58 @@ def cancel_reservation(reservation_id):
 @app.route('/edit-hardware/<int:hardware_id>', methods=['GET', 'POST'])
 @login_required
 def edit_hardware(hardware_id):
-    hardware = Hardware.query.get_or_404(hardware_id)
-    if hardware.owner_id != current_user.id:
-        flash('You can only edit your own hardware.', 'danger')
+    try:
+        app.logger.info(f"Attempting to load hardware with ID: {hardware_id}")
+        hardware = Hardware.query.get_or_404(hardware_id)
+        app.logger.info(f"Loaded hardware: {hardware.id}, name: {hardware.name}, price: {hardware.price}, owner_id: {hardware.owner_id}")
+        app.logger.info(f"Current user ID: {current_user.id}")
+        if hardware.owner_id != current_user.id:
+            flash('You can only edit your own hardware.', 'danger')
+            app.logger.info("User not authorized to edit this hardware")
+            return redirect(url_for('home'))
+        if request.method == 'POST':
+            app.logger.info("Processing POST request to update hardware")
+            hardware.name = request.form['name']
+            hardware.price = float(request.form['price'])
+            if hardware.price <= 0:
+                flash('Price must be greater than 0.', 'danger')
+                app.logger.info("Invalid price, must be greater than 0")
+                return redirect(url_for('edit_hardware', hardware_id=hardware.id))
+            db.session.commit()
+            flash('Hardware updated successfully!', 'success')
+            app.logger.info("Hardware updated successfully")
+            return redirect(url_for('home'))
+        app.logger.info("Rendering edit_hardware.html template")
+        return render_template('edit_hardware.html', hardware=hardware)
+    except Exception as e:
+        app.logger.error(f"Error in edit_hardware route: {str(e)}")
+        flash('An error occurred while trying to edit the hardware.', 'danger')
         return redirect(url_for('home'))
-    if request.method == 'POST':
-        hardware.name = request.form['name']
-        hardware.price = float(request.form['price'])
-        if hardware.price <= 0:
-            flash('Price must be greater than 0.', 'danger')
-            return redirect(url_for('edit_hardware', hardware_id=hardware.id))
-        db.session.commit()
-        flash('Hardware updated successfully!', 'success')
-        return redirect(url_for('home'))
-    return render_template('edit_hardware.html', hardware=hardware)
 
 @app.route('/delete-hardware/<int:hardware_id>', methods=['POST'])
 @login_required
 def delete_hardware(hardware_id):
-    hardware = Hardware.query.get_or_404(hardware_id)
-    if hardware.owner_id != current_user.id:
-        flash('You can only delete your own hardware.', 'danger')
+    try:
+        hardware = Hardware.query.get_or_404(hardware_id)
+        app.logger.info(f"Attempting to delete hardware with ID: {hardware_id}")
+        if hardware.owner_id != current_user.id:
+            flash('You can only delete your own hardware.', 'danger')
+            app.logger.info("User not authorized to delete this hardware")
+            return redirect(url_for('home'))
+        active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).all()
+        if active_reservations:
+            flash('Cannot delete hardware with active reservations.', 'danger')
+            app.logger.info("Cannot delete hardware due to active reservations")
+            return redirect(url_for('home'))
+        db.session.delete(hardware)
+        db.session.commit()
+        flash('Hardware deleted successfully!', 'success')
+        app.logger.info("Hardware deleted successfully")
         return redirect(url_for('home'))
-    active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).all()
-    if active_reservations:
-        flash('Cannot delete hardware with active reservations.', 'danger')
+    except Exception as e:
+        app.logger.error(f"Error in delete_hardware route: {str(e)}")
+        flash('An error occurred while trying to delete the hardware.', 'danger')
         return redirect(url_for('home'))
-    db.session.delete(hardware)
-    db.session.commit()
-    flash('Hardware deleted successfully!', 'success')
-    return redirect(url_for('home'))
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 5000))
