@@ -25,15 +25,17 @@ migrate = Migrate(app, db)
 # scheduler.init_app(app)
 # scheduler.start()
 
-# Kreiraj tabele prilikom inicijalizacije aplikacije
+# Provera da li su tabele kreirane
+tables_created = False
 with app.app_context():
     try:
         db.drop_all()  # Obriši sve postojeće tabele (za svaki slučaj)
         db.create_all()
         app.logger.info("Database tables created successfully!")
+        tables_created = True
     except Exception as e:
         app.logger.error(f"Error creating database tables: {str(e)}")
-        raise e  # Podigni grešku da bismo videli šta se dešava
+        tables_created = False
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -62,7 +64,7 @@ class Hardware(db.Model):
 # Reservation model
 class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    hardware_id = db.Column(db.Integer, db.ForeignKey('hardware.id'), nullable=False)
+    hardware_id = db.Column(db.Integer, db.ConcurrentModificationExceptiondb.ForeignKey('hardware.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     hours = db.Column(db.Integer, nullable=False)
     start_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -73,25 +75,14 @@ class Reservation(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
+    if not tables_created:
+        return None
     return db.session.get(User, int(user_id))
-
-# Pozadinski zadatak za proveru isteka rezervacija (privremeno onemogućen)
-# @scheduler.task('interval', id='check_reservations', seconds=60)
-# def check_reservations():
-#     with app.app_context():
-#         try:
-#             now = datetime.utcnow()
-#             expired_reservations = Reservation.query.filter(Reservation.end_time <= now).all()
-#             for reservation in expired_reservations:
-#                 app.logger.info(f"Reservation {reservation.id} has expired. Deleting...")
-#                 db.session.delete(reservation)
-#             db.session.commit()
-#             app.logger.info("Checked for expired reservations.")
-#         except Exception as e:
-#             app.logger.error(f"Error checking reservations: {str(e)}")
 
 @app.route('/')
 def home():
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     hardware_list = Hardware.query.all()
     now = datetime.utcnow()
     for hardware in hardware_list:
@@ -101,6 +92,8 @@ def home():
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     if current_user.is_authenticated:
         return redirect(url_for('home'))
     if request.method == 'POST':
@@ -123,6 +116,8 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     if current_user.is_authenticated:
         return redirect(url_for('home'))
     if request.method == 'POST':
@@ -141,6 +136,8 @@ def login():
 @app.route('/logout')
 @login_required
 def logout():
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     logout_user()
     flash('Logged out successfully!', 'success')
     return redirect(url_for('home'))
@@ -148,6 +145,8 @@ def logout():
 @app.route('/add-hardware', methods=['GET', 'POST'])
 @login_required
 def add_hardware():
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     if request.method == 'POST':
         name = request.form['name']
         price = float(request.form['price'])
@@ -164,6 +163,8 @@ def add_hardware():
 @app.route('/reserve/<int:hardware_id>', methods=['GET', 'POST'])
 @login_required
 def reserve(hardware_id):
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     hardware = Hardware.query.get_or_404(hardware_id)
     now = datetime.utcnow()
     active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).filter(Reservation.end_time > now).all()
@@ -194,12 +195,16 @@ def reserve(hardware_id):
 @app.route('/reservations')
 @login_required
 def reservations():
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     reservation_list = Reservation.query.filter_by(user_id=current_user.id).all()
     return render_template('reservations.html', reservations=reservation_list)
 
 @app.route('/cancel-reservation/<int:reservation_id>', methods=['POST'])
 @login_required
 def cancel_reservation(reservation_id):
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     reservation = Reservation.query.get_or_404(reservation_id)
     if reservation.user_id != current_user.id:
         flash('You can only cancel your own reservations.', 'danger')
@@ -212,6 +217,8 @@ def cancel_reservation(reservation_id):
 @app.route('/edit-hardware/<int:hardware_id>', methods=['GET', 'POST'])
 @login_required
 def edit_hardware(hardware_id):
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     try:
         app.logger.info(f"Attempting to load hardware with ID: {hardware_id}")
         hardware = Hardware.query.get_or_404(hardware_id)
@@ -243,6 +250,8 @@ def edit_hardware(hardware_id):
 @app.route('/delete-hardware/<int:hardware_id>', methods=['POST'])
 @login_required
 def delete_hardware(hardware_id):
+    if not tables_created:
+        return "Database tables could not be created. Please check the logs for more information.", 500
     try:
         hardware = Hardware.query.get_or_404(hardware_id)
         app.logger.info(f"Attempting to delete hardware with ID: {hardware_id}")
