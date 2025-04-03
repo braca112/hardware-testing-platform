@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_apscheduler import APScheduler
+from flask_migrate import Migrate
 
 app = Flask(__name__)
 # Uzmi DATABASE_URL iz okruženja
@@ -17,13 +18,13 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
-# Konfiguracija za APScheduler
+# Konfiguracija za APScheduler (privremeno onemogućena)
 # scheduler = APScheduler()
 # scheduler.init_app(app)
 # scheduler.start()
 
-# Kreiraj tabele prilikom inicijalizacije aplikacije
 # Kreiraj tabele prilikom inicijalizacije aplikacije
 with app.app_context():
     try:
@@ -74,7 +75,7 @@ class Reservation(db.Model):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
-# Pozadinski zadatak za proveru isteka rezervacija
+# Pozadinski zadatak za proveru isteka rezervacija (privremeno onemogućen)
 # @scheduler.task('interval', id='check_reservations', seconds=60)
 # def check_reservations():
 #     with app.app_context():
@@ -87,7 +88,7 @@ def load_user(user_id):
 #             db.session.commit()
 #             app.logger.info("Checked for expired reservations.")
 #         except Exception as e:
-#             app.logger.error(f"Error checking reservations: {str(e)}")checking reservations: {str(e)}")
+#             app.logger.error(f"Error checking reservations: {str(e)}")
 
 @app.route('/')
 def home():
