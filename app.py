@@ -19,9 +19,9 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 db = SQLAlchemy(app)
 
 # Konfiguracija za APScheduler
-scheduler = APScheduler()
-scheduler.init_app(app)
-scheduler.start()
+# scheduler = APScheduler()
+# scheduler.init_app(app)
+# scheduler.start()
 
 # Kreiraj tabele prilikom inicijalizacije aplikacije
 # Kreiraj tabele prilikom inicijalizacije aplikacije
@@ -75,19 +75,19 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 # Pozadinski zadatak za proveru isteka rezervacija
-@scheduler.task('interval', id='check_reservations', seconds=60)
-def check_reservations():
-    with app.app_context():
-        try:
-            now = datetime.utcnow()
-            expired_reservations = Reservation.query.filter(Reservation.end_time <= now).all()
-            for reservation in expired_reservations:
-                app.logger.info(f"Reservation {reservation.id} has expired. Deleting...")
-                db.session.delete(reservation)
-            db.session.commit()
-            app.logger.info("Checked for expired reservations.")
-        except Exception as e:
-            app.logger.error(f"Error checking reservations: {str(e)}")
+# @scheduler.task('interval', id='check_reservations', seconds=60)
+# def check_reservations():
+#     with app.app_context():
+#         try:
+#             now = datetime.utcnow()
+#             expired_reservations = Reservation.query.filter(Reservation.end_time <= now).all()
+#             for reservation in expired_reservations:
+#                 app.logger.info(f"Reservation {reservation.id} has expired. Deleting...")
+#                 db.session.delete(reservation)
+#             db.session.commit()
+#             app.logger.info("Checked for expired reservations.")
+#         except Exception as e:
+#             app.logger.error(f"Error checking reservations: {str(e)}")checking reservations: {str(e)}")
 
 @app.route('/')
 def home():
