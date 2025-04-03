@@ -5,3 +5,4 @@ Werkzeug==3.0.4
 psycopg==3.2.1
 gunicorn==23.0.0
 Flask-APScheduler==1.13.1
+Flask-Migrate==4.0.7
