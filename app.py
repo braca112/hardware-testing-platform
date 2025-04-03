@@ -1,9 +1,10 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, get_flashed_messages
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_apscheduler import APScheduler
 
 app = Flask(__name__)
 # Uzmi DATABASE_URL iz okruženja
@@ -16,6 +17,11 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
 db = SQLAlchemy(app)
+
+# Konfiguracija za APScheduler
+scheduler = APScheduler()
+scheduler.init_app(app)
+scheduler.start()
 
 # Kreiraj tabele prilikom inicijalizacije aplikacije
 with app.app_context():
@@ -33,7 +39,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)  # Povećana dužina za novije verzije Werkzeug-a
+    password_hash = db.Column(db.String(255), nullable=False)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -55,6 +61,8 @@ class Reservation(db.Model):
     hardware_id = db.Column(db.Integer, db.ForeignKey('hardware.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     hours = db.Column(db.Integer, nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    end_time = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     hardware = db.relationship('Hardware', backref='reservations')
     user = db.relationship('User', backref='reservations')
@@ -63,11 +71,27 @@ class Reservation(db.Model):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
+# Pozadinski zadatak za proveru isteka rezervacija
+@scheduler.task('interval', id='check_reservations', seconds=60)
+def check_reservations():
+    with app.app_context():
+        try:
+            now = datetime.utcnow()
+            expired_reservations = Reservation.query.filter(Reservation.end_time <= now).all()
+            for reservation in expired_reservations:
+                app.logger.info(f"Reservation {reservation.id} has expired. Deleting...")
+                db.session.delete(reservation)
+            db.session.commit()
+            app.logger.info("Checked for expired reservations.")
+        except Exception as e:
+            app.logger.error(f"Error checking reservations: {str(e)}")
+
 @app.route('/')
 def home():
     hardware_list = Hardware.query.all()
+    now = datetime.utcnow()
     for hardware in hardware_list:
-        active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).all()
+        active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).filter(Reservation.end_time > now).all()
         hardware.is_available = len(active_reservations) == 0
     return render_template('index.html', hardware=hardware_list)
 
@@ -137,12 +161,26 @@ def add_hardware():
 @login_required
 def reserve(hardware_id):
     hardware = Hardware.query.get_or_404(hardware_id)
+    now = datetime.utcnow()
+    active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).filter(Reservation.end_time > now).all()
+    if active_reservations:
+        flash('This hardware is already reserved.', 'danger')
+        return redirect(url_for('home'))
     if request.method == 'POST':
         hours = int(request.form['hours'])
         if hours < 1 or hours > 24:
             flash('Hours must be between 1 and 24.', 'danger')
             return redirect(url_for('reserve', hardware_id=hardware_id))
-        new_reservation = Reservation(hardware_id=hardware.id, user_id=current_user.id, hours=hours, created_at=datetime.utcnow())
+        start_time = datetime.utcnow()
+        end_time = start_time + timedelta(hours=hours)
+        new_reservation = Reservation(
+            hardware_id=hardware.id,
+            user_id=current_user.id,
+            hours=hours,
+            start_time=start_time,
+            end_time=end_time,
+            created_at=start_time
+        )
         db.session.add(new_reservation)
         db.session.commit()
         flash('Reservation successful!', 'success')
@@ -208,7 +246,7 @@ def delete_hardware(hardware_id):
             flash('You can only delete your own hardware.', 'danger')
             app.logger.info("User not authorized to delete this hardware")
             return redirect(url_for('home'))
-        active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).all()
+        active_reservations = Reservation.query.filter_by(hardware_id=hardware.id).filter(Reservation.end_time > datetime.utcnow()).all()
         if active_reservations:
             flash('Cannot delete hardware with active reservations.', 'danger')
             app.logger.info("Cannot delete hardware due to active reservations")
