@@ -24,12 +24,15 @@ scheduler.init_app(app)
 scheduler.start()
 
 # Kreiraj tabele prilikom inicijalizacije aplikacije
+# Kreiraj tabele prilikom inicijalizacije aplikacije
 with app.app_context():
     try:
+        db.drop_all()  # Obriši sve postojeće tabele (za svaki slučaj)
         db.create_all()
         app.logger.info("Database tables created successfully!")
     except Exception as e:
-        app.logger.error(f"Error creating database tables: {e}")
+        app.logger.error(f"Error creating database tables: {str(e)}")
+        raise e  # Podigni grešku da bismo videli šta se dešava
 
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
